@@ -48,7 +48,7 @@ async fn hash_file(path: &Path) -> Result<(), eyre::Error> {
 
     let mut buf = vec![0u8; 256 * 1024];
     loop {
-        let n = Pin::new(&mut file).simple_read(&mut buf[..]).await?;
+        let n = file.simple_read(&mut buf[..]).await?;
         match n {
             0 => break,
             n => hasher.update(&buf[..n]),
@@ -107,20 +107,22 @@ use async_trait::async_trait;
 
 #[async_trait]
 trait SimpleRead {
-    async fn simple_read(self: Pin<&mut Self>, buf: &mut [u8]) -> io::Result<usize>;
+    async fn simple_read(&mut self, buf: &mut [u8]) -> io::Result<usize>;
 }
 
 #[async_trait]
 impl<R> SimpleRead for TracingReader<R>
 where
-    R: AsyncRead + Send,
+    R: AsyncRead + Send + Unpin,
 {
-    async fn simple_read(self: Pin<&mut Self>, buf: &mut [u8]) -> io::Result<usize> {
+    async fn simple_read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         // tracing
-        let address = &self as *const _;
-        println!("{:?} => {:?}", address, std::thread::current().id());
+        {
+            let address = &self as *const _;
+            println!("{:?} => {:?}", address, std::thread::current().id());
+        }
 
         // reading
-        self.project().inner.read(buf).await
+        self.inner.read(buf).await
     }
 }
